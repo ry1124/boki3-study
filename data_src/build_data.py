@@ -7,6 +7,7 @@ import json
 import re
 from pathlib import Path
 
+from dai2 import EXAMS, PROBLEMS
 from dai3 import SETS
 
 HERE = Path(__file__).parent
@@ -207,6 +208,7 @@ def build_dai3(s):
         assert a in GROUP, f"{s['id']}: 勘定科目の一覧にない「{a}」"
         bal[a] = bal.get(a, 0) + d - c
     re_before = -bal["繰越利益剰余金"]
+    before = dict(bal)
 
     def pretax():
         return sum(-v for a, v in bal.items() if GROUP[a] == "R") - sum(
@@ -236,6 +238,12 @@ def build_dai3(s):
     for a, v in bal.items():
         assert GROUP[a] != "X" or v == 0, f"{s['id']}: 決算整理後も{a}に残高{v:,}が残っている"
 
+    if s.get("mock"):   # 模擬試験: 財務諸表を作り、決算で金額が変わる行を空欄にする
+        fs = fs_rows(bal, ni, re_before + ni, before)
+        nb = sum(r["blank"] for part in fs.values() for rows in part.values() for r in rows)
+        print(f"  {s['id']}: 当期純利益 {ni:,} / 資産合計 {assets:,} / 空欄 {nb}個")
+        return {"id": s["id"], "title": s["title"], "lead": s["lead"], "tb": tb, "adj": adj, "fs": fs}
+
     def answer(how):
         if how == "ni": return ni
         if how == "re": return re_before + ni
@@ -246,6 +254,49 @@ def build_dai3(s):
     blanks = [{"label": lab, "ans": answer(how)} for lab, how in s["ask"]]
     print(f"  {s['id']}: 当期純利益 {ni:,} / 資産合計 {assets:,} / " + "・".join(f"{b['label']} {b['ans']:,}" for b in blanks))
     return {"id": s["id"], "title": s["title"], "lead": s["lead"], "tb": tb, "adj": adj, "blanks": blanks}
+
+
+# ===== 模擬試験の第3問: 財務諸表 =====
+FS_NAME = {"繰越商品": "商品", "仕入": "売上原価", "売上": "売上高"}
+FS_NAME.update({a: "前払費用" for a in "前払保険料 前払家賃 前払利息".split()})
+FS_NAME.update({a: "未収収益" for a in "未収利息 未収家賃 未収地代".split()})
+FS_NAME.update({a: "未払費用" for a in "未払利息 未払家賃 未払給料 未払保険料".split()})
+FS_NAME.update({a: "前受収益" for a in "前受家賃 前受地代 前受利息 前受手数料".split()})
+CONTRA_OF = {"売掛金": "貸倒引当金", "受取手形": "貸倒引当金", "建物": "建物減価償却累計額",
+             "備品": "備品減価償却累計額", "車両運搬具": "車両運搬具減価償却累計額"}
+
+
+def fs_lines(bal, groups):
+    """財務諸表の行(表示名でまとめる)。資産の下に、その資産から差し引く貸倒引当金・減価償却累計額を置く"""
+    out = {}
+    for a in sorted(bal, key=ORDER.get):
+        if GROUP[a] not in groups or GROUP[a] == "C" or bal[a] == 0 or a == "繰越利益剰余金":
+            continue
+        lab = FS_NAME.get(a, a)
+        out.setdefault(lab, {"label": lab, "amt": 0, "contra": False})["amt"] += bal[a] * sign(a)
+        c = CONTRA_OF.get(a)
+        if c and bal.get(c):
+            assert not (a in ("売掛金", "受取手形") and bal.get("受取手形") and bal.get("売掛金")), "貸倒引当金は売掛金だけの問題にする"
+            out[c] = {"label": "貸倒引当金" if c == "貸倒引当金" else "減価償却累計額", "amt": -bal[c], "contra": True, "key": c}
+    return out
+
+
+def fs_rows(bal, ni, re_total, before):
+    def part(groups, extra=None):
+        now, old = fs_lines(bal, groups), fs_lines(before, groups)
+        rows = [dict(r, blank=(k not in old or old[k]["amt"] != r["amt"])) for k, r in now.items()]
+        if extra:
+            rows.append(extra)
+        for r in rows:
+            r.pop("key", None)
+        return rows
+    fs = {"pl": {"exp": part("E", {"label": "当期純利益", "amt": ni, "contra": False, "blank": True}), "rev": part("R")},
+          "bs": {"asset": part("AC"), "liab": part("L"),
+                 "eq": part("N", {"label": "繰越利益剰余金", "amt": re_total, "contra": False, "blank": True})}}
+    tot = lambda rows: sum(-r["amt"] if r["contra"] else r["amt"] for r in rows)
+    assert tot(fs["pl"]["exp"]) == tot(fs["pl"]["rev"]), "損益計算書の左右が合わない"
+    assert tot(fs["bs"]["asset"]) == tot(fs["bs"]["liab"]) + tot(fs["bs"]["eq"]), "貸借対照表の左右が合わない"
+    return fs
 
 
 # ===== 計画: その日に読む章 =====
@@ -260,13 +311,16 @@ bank = parse_bank()
 subject = build_subject(bank)
 assert set(bank) <= {c["no"] for c in subject["chapters"]}, "shiwake.txt に存在しない章がある"
 print("第3問の演習（答えは自動計算）")
-dai3 = [build_dai3(s) for s in SETS]
+built = {s["id"]: build_dai3(s) for s in SETS}
+dai3 = [built[s["id"]] for s in SETS if not s.get("mock")]
+prob = {p["id"]: p for p in PROBLEMS}
+exams = [dict(e, q2=[prob[i] for i in e["q2"]], q3=built[e["q3"]]) for e in EXAMS]
 plan = build_plan()
 accounts = sorted((a for a in GROUP if GROUP[a] != "X" or a == "損益"), key=lambda a: ORDER[a])
-data = {"subjects": [subject], "dai3": dai3, "plan": plan, "accounts": accounts}
+data = {"subjects": [subject], "dai3": dai3, "exams": exams, "plan": plan, "accounts": accounts}
 (APP / "js" / "data.js").write_text(
     "// build_data.py が作るデータ(手で編集しない)\nconst BOKI_DATA = " + json.dumps(data, ensure_ascii=False) + ";\n",
     encoding="utf-8")
 qs = [q for c in subject["chapters"] for q in c["quiz"]]
 cnt = {t: sum(1 for q in qs if q["t"] == t) for t in ("jr", "num", "ox")}
-print(f"章 {len(subject['chapters'])} / 仕訳 {cnt['jr']} / 計算 {cnt['num']} / ○× {cnt['ox']} / 第3問 {len(dai3)} / 計画 {len(plan)}日")
+print(f"章 {len(subject['chapters'])} / 仕訳 {cnt['jr']} / 計算 {cnt['num']} / ○× {cnt['ox']} / 第3問 {len(dai3)} / 模擬試験 {len(exams)} / 計画 {len(plan)}日")

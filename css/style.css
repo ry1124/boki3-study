@@ -302,3 +302,41 @@ table.tb tr.total td { font-weight: 700; border-top: 2px solid var(--text-dim); 
 @media (min-width: 720px) {
   .jr { grid-template-columns: 1fr 1fr; }
 }
+
+/* ===== 本番形式の模擬試験 ===== */
+#view-exam { z-index: 20; background: var(--bg); padding-bottom: calc(32px + var(--safe-bottom)); }
+.exam-bar { flex-direction: column; align-items: stretch; gap: 6px; }
+.exam-top { display: flex; align-items: center; gap: 8px; }
+.exam-top .crumb { flex: 1; color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.exam-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.exam-tab { font-family: inherit; font-size: 15px; font-weight: 700; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 10px; padding: 7px 4px; cursor: pointer; display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.exam-tab small { font-size: 11px; font-weight: 500; color: var(--text-dim); }
+.exam-tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.exam-tab.on small { color: rgba(255, 255, 255, 0.85); }
+.exam-nav { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 6px; margin: 4px 0 8px; }
+.exam-num { font-family: inherit; font-size: 15px; font-weight: 700; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; font-variant-numeric: tabular-nums; }
+.exam-num.filled { background: var(--accent-soft); }
+.exam-num.on { border: 2px solid var(--accent); }
+.exam-num.ok { background: var(--good-soft); color: var(--good); }
+.exam-num.ng { background: var(--bad-soft); color: var(--bad); }
+.exam-q-ans .result { margin-top: 12px; }
+.exam-panel .pager { margin-top: 14px; }
+#btn-end-exam2 { margin-top: 20px; }
+.blank.wide { grid-template-columns: 1fr; }
+.blank-sel { flex: none; width: 100%; }
+.multi { display: flex; flex-wrap: wrap; gap: 6px; }
+.chk { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }
+.chk input { width: 16px; height: 16px; margin: 0; }
+.blank.row-ok .blank-sel { border-color: var(--good); background: var(--good-soft); }
+.blank.row-ng .blank-sel { border-color: var(--bad); background: var(--bad-soft); }
+table.fs td:first-child { width: 58%; }
+table.fs tr.is-blank td { background: var(--warn-soft); }
+.fs-in { width: 120px; padding: 6px 8px; font-size: 15px; }
+.fs-in.in-ok { border-color: var(--good); background: var(--good-soft); }
+.fs-in.in-ng { border-color: var(--bad); background: var(--bad-soft); }
+.fs-ans { display: block; font-size: 12px; font-weight: 700; color: var(--bad); }
+.fs-ans:empty { display: none; }
+.pass { font-size: 16px; font-weight: 800; margin: 6px 0 0; }
+.pass.ok { color: var(--good); }
+.pass.ng { color: var(--bad); }
+#exam-result .q-actions .btn { flex: 1; width: auto; }

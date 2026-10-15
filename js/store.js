@@ -5,7 +5,8 @@ function emptyState() {
   // start: 1日目の日付 / done: 日目 -> 完了日時 / quiz: 問題id -> { n:解いた回数, ok:正解数, last:直近の正誤, streak:連続正解数, miss:間違えた回数, at }
   // gates: 関門の項目id -> 入力した点数 / ippon: 日付 -> その日に解いた仕訳ドリルの数
   // d3: 第3問の演習id -> { at, ok, n, best } / mocks: 第1問の模擬の記録 [{ at, score, max, sec }]
-  return { start: null, done: {}, read: {}, quiz: {}, gates: {}, ippon: {}, d3: {}, mocks: [] };
+  // exams: 本番形式の模擬試験の記録 [{ at, id, score, p1, p2, p3, sec }]
+  return { start: null, done: {}, read: {}, quiz: {}, gates: {}, ippon: {}, d3: {}, mocks: [], exams: [] };
 }
 
 let state = loadState();
