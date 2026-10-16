@@ -134,6 +134,11 @@ def parse_bank(bank, name, hard):
     return bank
 
 
+# 同じ意味に取れる科目のグループ。正解と同じグループの科目は、S: で明示しない限り選択肢に入れない
+SYNONYMS = [{"立替金", "従業員立替金"}, {"預り金", "所得税預り金", "社会保険料預り金"},
+            {"貸付金", "従業員貸付金", "役員貸付金"}, {"借入金", "役員借入金", "当座借越"}, {"発送費", "支払運賃"}]
+
+
 def options(q, pool, seed):
     """仕訳問題の選択肢: 正解の科目＋指定の科目＋間違えやすい相方＋同じ章の科目から、6〜8個"""
     right = [a for a, _ in q["dr"] + q["cr"]]
@@ -143,7 +148,9 @@ def options(q, pool, seed):
             if a in (x, y):
                 opts.append(y if a == x else x)
     opts = list(dict.fromkeys(opts))
-    rest = sorted(set(pool) - set(opts), key=lambda a: hashlib.md5((seed + a).encode()).hexdigest())
+    same = {x for g in SYNONYMS if g & set(right) for x in g} - set(right) - set(q["extra"])
+    opts = [a for a in opts if a not in same]
+    rest = sorted(set(pool) - set(opts) - same, key=lambda a: hashlib.md5((seed + a).encode()).hexdigest())
     want = max(6, min(8, len(right) + 4))
     opts += rest[:max(0, want - len(opts))]
     for a in opts:
