@@ -17,9 +17,9 @@ PLAN_JSON = HERE / "plan.json"   # make_plan.py が作る
 # 勘定科目(グループ: A資産 L負債 N純資産 R収益 E費用 / X現金過不足・損益など)。選択肢はこの並び順で表示する
 ACCOUNTS = {
     "A": "現金 小口現金 当座預金 普通預金 定期預金 受取手形 電子記録債権 売掛金 クレジット売掛金 繰越商品 前払金 "
-         "貸付金 手形貸付金 従業員貸付金 未収入金 立替金 従業員立替金 仮払金 仮払消費税 仮払法人税等 受取商品券 "
+         "貸付金 手形貸付金 従業員貸付金 役員貸付金 未収入金 立替金 従業員立替金 仮払金 仮払消費税 仮払法人税等 受取商品券 "
          "差入保証金 前払保険料 前払家賃 前払利息 未収利息 未収家賃 未収地代 貯蔵品 建物 備品 車両運搬具 土地",
-    "L": "支払手形 電子記録債務 買掛金 前受金 借入金 手形借入金 当座借越 未払金 預り金 所得税預り金 社会保険料預り金 "
+    "L": "支払手形 電子記録債務 買掛金 前受金 借入金 手形借入金 役員借入金 当座借越 未払金 預り金 所得税預り金 社会保険料預り金 "
          "仮受金 仮受消費税 未払消費税 未払法人税等 未払配当金 未払利息 未払家賃 未払給料 未払保険料 前受家賃 前受地代 "
          "前受利息 前受手数料",
     "C": "貸倒引当金 建物減価償却累計額 備品減価償却累計額 車両運搬具減価償却累計額",   # 資産から差し引く科目
@@ -108,17 +108,17 @@ def amount(s):
     return int(s.replace(",", ""))
 
 
-def parse_bank():
-    """shiwake.txt を章ごとの仕訳問題・計算問題にする"""
-    bank, ch = {}, None
-    text = "\n".join(l for l in (HERE / "shiwake.txt").read_text(encoding="utf-8").split("\n") if not l.startswith("#"))
+def parse_bank(bank, name, hard):
+    """shiwake.txt(確認レベル) / shiwake_hard.txt(本試験レベル) を章ごとの仕訳問題・計算問題にする"""
+    ch = None
+    text = "\n".join(l for l in (HERE / name).read_text(encoding="utf-8").split("\n") if not l.startswith("#"))
     for block in re.split(r"\n\s*\n", text):
         lines = [l.strip() for l in block.strip().split("\n") if l.strip()]
         if lines and lines[0].startswith("@"):
             ch = int(lines.pop(0)[1:])
         if not lines:
             continue
-        q = {"dr": [], "cr": [], "extra": []}
+        q = {"dr": [], "cr": [], "extra": [], "hard": hard}
         for l in lines:
             k, v = l.split(":", 1)
             v = v.strip()
@@ -153,16 +153,20 @@ def options(q, pool, seed):
 
 def build_questions(cid, items):
     out, pool = [], [a for q in items if q["t"] == "jr" for a, _ in q["dr"] + q["cr"]]
-    nj = nn = 0
+    nj = nh = nn = 0
     for q in items:
         if q["t"] == "jr":
-            nj += 1
-            qid = f"{cid}-j{nj}"
+            if q["hard"]:
+                nh += 1
+                qid = f"{cid}-h{nh}"
+            else:
+                nj += 1
+                qid = f"{cid}-j{nj}"
             sd, sc = sum(x for _, x in q["dr"]), sum(x for _, x in q["cr"])
             assert sd == sc, f"{qid}: 借方{sd:,}と貸方{sc:,}が合わない「{q['q'][:20]}」"
             assert len(q["dr"]) <= 4 and len(q["cr"]) <= 4, f"{qid}: 1つの側は4行まで"
             out.append({"id": qid, "t": "jr", "q": q["q"], "dr": q["dr"], "cr": q["cr"],
-                        "opts": options(q, pool, qid), "exp": q.get("exp", "")})
+                        "opts": options(q, pool, qid), "exp": q.get("exp", ""), "hard": q["hard"]})
         else:
             nn += 1
             out.append({"id": f"{cid}-n{nn}", "t": "num", "q": q["q"], "ans": q["ans"], "exp": q.get("exp", "")})
@@ -253,7 +257,7 @@ def build_dai3(s):
 
     blanks = [{"label": lab, "ans": answer(how)} for lab, how in s["ask"]]
     print(f"  {s['id']}: 当期純利益 {ni:,} / 資産合計 {assets:,} / " + "・".join(f"{b['label']} {b['ans']:,}" for b in blanks))
-    return {"id": s["id"], "title": s["title"], "lead": s["lead"], "tb": tb, "adj": adj, "blanks": blanks}
+    return {"id": s["id"], "title": s["title"], "lead": s["lead"], "tb": tb, "adj": adj, "blanks": blanks, "hard": bool(s.get("hard"))}
 
 
 # ===== 模擬試験の第3問: 財務諸表 =====
@@ -307,7 +311,7 @@ def build_plan():
     return days
 
 
-bank = parse_bank()
+bank = parse_bank(parse_bank({}, "shiwake.txt", False), "shiwake_hard.txt", True)
 subject = build_subject(bank)
 assert set(bank) <= {c["no"] for c in subject["chapters"]}, "shiwake.txt に存在しない章がある"
 print("第3問の演習（答えは自動計算）")
@@ -323,4 +327,5 @@ data = {"subjects": [subject], "dai3": dai3, "exams": exams, "plan": plan, "acco
     encoding="utf-8")
 qs = [q for c in subject["chapters"] for q in c["quiz"]]
 cnt = {t: sum(1 for q in qs if q["t"] == t) for t in ("jr", "num", "ox")}
-print(f"章 {len(subject['chapters'])} / 仕訳 {cnt['jr']} / 計算 {cnt['num']} / ○× {cnt['ox']} / 第3問 {len(dai3)} / 模擬試験 {len(exams)} / 計画 {len(plan)}日")
+cnt["hard"] = sum(1 for q in qs if q.get("hard"))
+print(f"章 {len(subject['chapters'])} / 仕訳 {cnt['jr']}（本試験レベル {cnt['hard']}） / 計算 {cnt['num']} / ○× {cnt['ox']} / 第3問 {len(dai3)} / 模擬試験 {len(exams)} / 計画 {len(plan)}日")

@@ -11,6 +11,8 @@ SUBJ.chapters.forEach((c) => {
 });
 D.dai3.forEach((s) => { SETS[s.id] = s; });
 const JR_IDS = Object.keys(QUESTIONS).filter((id) => QUESTIONS[id].t === 'jr');
+const HARD_IDS = JR_IDS.filter((id) => QUESTIONS[id].hard); // 本試験レベル(複合取引・ひっかけ入り)
+const hardOf = (chs) => HARD_IDS.filter((id) => chs.includes(QUESTIONS[id].ch));
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -132,8 +134,8 @@ function prioritized(pool, size) {
   const rank = (id) => {
     const r = state.quiz[id];
     if (isWeak(r)) return [0, r.at];
-    if (!r) return [1, ''];
-    return [2, r.at];
+    if (!r) return [QUESTIONS[id].hard ? 1 : 2, ''];
+    return [3, r.at];
   };
   return shuffle(pool.slice())
     .sort((a, b) => { const x = rank(a); const y = rank(b); return x[0] - y[0] || String(x[1]).localeCompare(String(y[1])); })
@@ -251,6 +253,11 @@ function dayCard(day, label) {
       <button class="btn ghost small" data-quiz-ch="${id}">問題 ${s.okNow}/${s.total}</button>
     </div>`);
   });
+  const dayHard = hardOf(day.ch);
+  if (dayHard.length) {
+    const ok = dayHard.filter((id) => state.quiz[id] && state.quiz[id].last).length;
+    links.push(`<button class="btn ghost" data-quiz-hard="${day.n}">🔥 この日の範囲の本試験レベル（${ok}/${dayHard.length}問正解）</button>`);
+  }
   if (day.todo.includes('第1問の模擬')) links.push(`<button class="btn ghost" data-quiz-mode="mock">⏱ 第1問の模擬（仕訳15問・15分）</button>`);
   if (day.todo.includes('第3問')) {
     D.dai3.forEach((s) => links.push(`<button class="btn ghost" data-open-set="${s.id}">🧮 第3問 ${esc(s.title)}${setChip(s.id)}</button>`));
@@ -321,7 +328,7 @@ function openChapter(id) {
   const ids = SUBJ.chapters.map((x) => x.id);
   const i = ids.indexOf(id);
   const counts = ['jr', 'num', 'ox'].map((t) => [t, c.quiz.filter((q) => q.t === t).length]).filter(([, n]) => n)
-    .map(([t, n]) => `${TYPE_LABEL[t]}${n}`).join('・');
+    .map(([t, n]) => `${TYPE_LABEL[t]}${n}`).join('・') + (hardOf([id]).length ? `／うち本試験レベル${hardOf([id]).length}` : '');
   $('chapter-body').innerHTML = `<h1 class="ch-title">第${c.no}章<br>${esc(c.title)}</h1>
     ${c.html}
     <div class="ch-actions">
@@ -344,6 +351,7 @@ function renderQuizMenu() {
   const best = state.mocks.length ? Math.max(...state.mocks.map((m) => m.score)) : null;
   let html = `<div class="quick">
     <button class="quick-btn" data-quiz-mode="drill"><b>仕訳ドリル</b><span>読んだ章から${DRILL_SIZE}問</span></button>
+    <button class="quick-btn" data-quiz-mode="hard"><b>本試験レベルの仕訳</b><span>読んだ章から15問（全${HARD_IDS.length}問）</span></button>
     <button class="quick-btn" data-quiz-mode="mock"><b>⏱ 第1問の模擬</b><span>仕訳15問・45点${best !== null ? `（最高 ${best}点）` : ''}</span></button>
     <button class="quick-btn" data-quiz-mode="wrong" ${wrong.length ? '' : 'disabled'}><b>間違えた問題</b><span>${wrong.length}問（3回続けて正解で外れる）</span></button>
     <button class="quick-btn" data-quiz-mode="new" ${unanswered ? '' : 'disabled'}><b>まだ解いていない問題</b><span>${unanswered}問</span></button>
@@ -401,7 +409,11 @@ function startQuiz(ids, title, mode) {
 function startQuizMode(mode) {
   const all = Object.keys(QUESTIONS);
   if (mode === 'drill') startQuiz(prioritized(reachedJr(), DRILL_SIZE), '仕訳ドリル', 'drill');
-  else if (mode === 'mock') startQuiz(shuffle(JR_IDS.slice()).slice(0, 15), '第1問の模擬', 'mock');
+  else if (mode === 'mock') startQuiz(pickExamQ1(), '第1問の模擬', 'mock');
+  else if (mode === 'hard') {
+    const chs = Object.keys(CHAPTERS).filter((id) => CH_FIRST_N[id] && CH_FIRST_N[id] <= Math.max(1, Math.min(LAST, todayN() || 1)));
+    startQuiz(prioritized(hardOf(chs), 15), '本試験レベルの仕訳');
+  }
   else if (mode === 'wrong') startQuiz(shuffle(wrongIds()), '間違えた問題');
   else if (mode === 'new') startQuiz(all.filter((id) => !state.quiz[id]).slice(0, 15), 'まだ解いていない問題');
 }
@@ -426,7 +438,7 @@ function renderQuestion() {
   const q = QUESTIONS[id];
   $('quiz-progress').textContent = quizProgressText();
   quiz.answered = false;
-  let body = `<div class="q-chapter">${esc(chapterTitle(q.ch))}・${TYPE_LABEL[q.t]}</div><p class="q-text">${esc(q.q)}</p>`;
+  let body = `<div class="q-chapter">${esc(chapterTitle(q.ch))}・${TYPE_LABEL[q.t]}${q.hard ? '<span class="pill hard">本試験レベル</span>' : ''}</div><p class="q-text">${esc(q.q)}</p>`;
   if (q.t === 'ox') {
     body += `<div class="ox">
       <button class="ox-btn" data-answer="1" aria-label="正しい（○）">○</button>
@@ -651,7 +663,8 @@ let exam = null; // { def, q1: 仕訳の問題id×15, startAt, done, tab, i }
 // 第1問の15問: 同じ章からは3問まで
 function pickExamQ1() {
   const per = {};
-  return shuffle(JR_IDS.slice()).filter((id) => {
+  const hard = shuffle(HARD_IDS.slice());
+  return hard.concat(shuffle(JR_IDS.filter((id) => !QUESTIONS[id].hard))).filter((id) => {
     const c = QUESTIONS[id].ch;
     per[c] = (per[c] || 0) + 1;
     return per[c] <= 3;
@@ -987,6 +1000,7 @@ document.addEventListener('click', (e) => {
   if (ds.openCh) return openChapter(ds.openCh);
   if (ds.quizCh) return startQuiz(CHAPTERS[ds.quizCh].quiz.map((q) => q.id), `第${CHAPTERS[ds.quizCh].no}章`);
   if (ds.quizMode) return startQuizMode(ds.quizMode);
+  if (ds.quizHard) return startQuiz(prioritized(hardOf(PLAN[Number(ds.quizHard) - 1].ch), 99), `${ds.quizHard}日目の本試験レベル`);
   if (ds.openSet) return openSet(ds.openSet);
   if (ds.openExam) {
     if (exam && !exam.done && $('view-exam').classList.contains('active')) return;

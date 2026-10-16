@@ -340,3 +340,4 @@ table.fs tr.is-blank td { background: var(--warn-soft); }
 .pass.ok { color: var(--good); }
 .pass.ng { color: var(--bad); }
 #exam-result .q-actions .btn { flex: 1; width: auto; }
+.pill.hard { color: var(--bad); background: var(--bad-soft); margin-left: 6px; }
