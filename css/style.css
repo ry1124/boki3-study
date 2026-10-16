@@ -346,3 +346,4 @@ table.fs tr.is-blank td { background: var(--warn-soft); }
 #view-settings { z-index: 20; background: var(--bg); padding-bottom: calc(32px + var(--safe-bottom)); }
 .settings-btn { font-size: 22px; padding: 4px 6px; line-height: 1; }
 .ver { font-size: 20px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.ahead-note { padding: 0 4px; }

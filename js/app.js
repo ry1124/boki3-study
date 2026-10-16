@@ -123,8 +123,17 @@ const DRILL_SIZE = 15;
 const CH_FIRST_N = {};
 PLAN.forEach((p) => p.ch.forEach((id) => { if (!CH_FIRST_N[id]) CH_FIRST_N[id] = p.n; }));
 
+// 今取り組む日目。今日の分(と前倒しで終えた日)が完了していれば、その次の日を前倒しでできる
+function workN() {
+  const k = todayN();
+  if (!k) return 1;
+  let n = Math.min(Math.max(1, k), LAST);
+  while (n < LAST && state.done[n]) n++;
+  return n;
+}
+
 function reachedJr() {
-  const k = Math.max(1, Math.min(LAST, todayN() || 1));
+  const k = workN();
   const chs = Object.keys(CHAPTERS).filter((id) => CH_FIRST_N[id] && CH_FIRST_N[id] <= k);
   return JR_IDS.filter((id) => chs.includes(QUESTIONS[id].ch));
 }
@@ -201,7 +210,17 @@ function renderToday() {
   let label = '今日やること';
   if (k < 1) { day = PLAN[0]; label = `${fmtDay(state.start)}から始まります`; }
   else if (k <= LAST) day = PLAN[k - 1];
-  if (day) html += dayCard(day, label);
+  // 今日の分が終わっていれば、次の日を前倒しで出す
+  const w = workN();
+  if (day && state.done[day.n] && w > day.n && !state.done[w]) {
+    html += `<div class="card soft"><div class="card-label">✓ ${k < 1 ? '1日目' : '今日の分'}（${day.n}日目）は完了しました</div>
+      <button class="btn ghost" data-plan-detail="${day.n}">${day.n}日目の内容を見る</button></div>`;
+    day = PLAN[w - 1];
+    html += dayCard(day, `前倒し：${w}日目（予定は${fmtDay(dayDate(w))}）`);
+    html += `<p class="muted ahead-note">${w === LAST
+      ? '7日目の内容（最終確認）は前倒しでできますが、受験は予約した日です。受験日を早めたいときは、設定の「1日目の日付」を変えて、予約も取り直してください。'
+      : `予定より${w - Math.max(k, 1)}日進んでいます。終わったら、さらに次の日へ進めます。`}</p>`;
+  } else if (day) html += dayCard(day, label);
   else {
     const exam = PLAN[LAST - 1].gate[0];
     html += `<div class="card main"><div class="card-label">7日間の計画は終わりました</div>
@@ -230,7 +249,7 @@ function renderToday() {
     </div>`;
   }
 
-  const next = PLAN.find((p) => p.n > Math.max(k, 0));
+  const next = PLAN.find((p) => p.n > (day ? day.n : Math.max(k, 0)));
   if (next && day) {
     html += `<div class="card soft"><div class="card-label">次の予定 ${next.n}日目・${fmtDay(dayDate(next.n))}</div>
       <div class="next-theme">${esc(next.theme)}</div></div>`;
@@ -411,7 +430,7 @@ function startQuizMode(mode) {
   if (mode === 'drill') startQuiz(prioritized(reachedJr(), DRILL_SIZE), '仕訳ドリル', 'drill');
   else if (mode === 'mock') startQuiz(pickExamQ1(), '第1問の模擬', 'mock');
   else if (mode === 'hard') {
-    const chs = Object.keys(CHAPTERS).filter((id) => CH_FIRST_N[id] && CH_FIRST_N[id] <= Math.max(1, Math.min(LAST, todayN() || 1)));
+    const chs = Object.keys(CHAPTERS).filter((id) => CH_FIRST_N[id] && CH_FIRST_N[id] <= workN());
     startQuiz(prioritized(hardOf(chs), 15), '本試験レベルの仕訳');
   }
   else if (mode === 'wrong') startQuiz(shuffle(wrongIds()), '間違えた問題');
