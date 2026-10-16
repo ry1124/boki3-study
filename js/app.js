@@ -944,23 +944,49 @@ function renderRecord() {
       <span class="score-chip ${m.score >= 39 ? 'good' : 'bad'}">${m.score}点</span></li>`;
   }).join('') + `</ul>` : `<div class="card soft"><p class="muted">「問題」タブの「第1問の模擬」を解くと、ここに並びます。目標は39点以上です。</p></div>`;
 
-  html += `<h2 class="section-title">1日目の日付</h2>
+  html += `<p class="foot">バージョン ${APP_VERSION}${state.start ? `・受験日 ${fmtDay(dayDate(LAST), true)}（予定）` : ''}</p>`;
+  $('record-body').innerHTML = html;
+}
+
+// ===== 設定 =====
+let updateStatus = ''; // 最後に「最新バージョンか確認」した結果
+function renderSettings() {
+  $('settings-body').innerHTML = `
+    <h2 class="section-title">アプリ情報</h2>
+    <div class="card soft">
+      <div class="score-row">今のバージョン<b class="ver">${APP_VERSION}</b></div>
+      <button class="btn primary" id="btn-check-update">最新バージョンか確認する</button>
+      <p class="muted" id="update-status">${esc(updateStatus || 'アプリを開いたときと、画面に戻ったときにも自動で確認しています。')}</p>
+    </div>
+
+    <h2 class="section-title">1日目の日付</h2>
     <div class="card soft">
       <label class="score-row" for="start-change">1日目<input id="start-change" class="date-input" type="date" value="${esc(state.start || '')}" data-start-input="1"></label>
-      <p class="muted">受験日（7日目）を変えたときは、ここで1日目をずらしてください。完了の記録は「何日目」で残ります。</p>
-    </div>`;
+      <p class="muted">${state.start ? `受験日（7日目）は${fmtDay(dayDate(LAST), true)}です。` : ''}受験日を変えたときは、ここで1日目をずらしてください。完了の記録は「何日目」で残ります。</p>
+    </div>
 
-  html += `<h2 class="section-title">バックアップ</h2>
+    <h2 class="section-title">バックアップ</h2>
     <div class="card soft">
       <p class="muted">記録はこの端末の中だけに保存されます。機種変更やブラウザのデータ削除に備えて、ときどきファイルに書き出してください。</p>
       <div class="btn-row">
         <button class="btn ghost" id="btn-export">書き出す</button>
         <button class="btn ghost" id="btn-import">読み込む</button>
       </div>
-    </div>
-    <button class="btn ghost" id="btn-check-update">アップデートを確認</button>
-    <p class="foot">バージョン ${APP_VERSION}${state.start ? `・受験日 ${fmtDay(dayDate(LAST), true)}（予定）` : ''}</p>`;
-  $('record-body').innerHTML = html;
+    </div>`;
+}
+
+function openSettings() {
+  backTo.settings = currentTab;
+  renderSettings();
+  showView('settings');
+}
+
+// 確認の結果を、設定画面の表示とトーストの両方に出す
+function reportUpdate(msg, manual) {
+  const t = new Date();
+  updateStatus = `${msg}（${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')} に確認）`;
+  if ($('update-status')) $('update-status').textContent = updateStatus;
+  if (manual) showToast(msg);
 }
 
 const RENDER = { today: renderToday, text: renderText, quizmenu: renderQuizMenu, plan: renderPlan, record: renderRecord };
@@ -1029,6 +1055,8 @@ document.addEventListener('click', (e) => {
     case 'btn-finish-set':
     case 'btn-quit-set': return switchTab(backTo.set);
     case 'btn-back-chapter': return switchTab(backTo.chapter);
+    case 'btn-settings': return openSettings();
+    case 'btn-back-settings': return switchTab(backTo.settings || 'today');
     case 'btn-exam-prev': markExamAnswered(); return examQ(exam.i - 1);
     case 'btn-exam-next': markExamAnswered(); return examQ(exam.i + 1);
     case 'btn-end-exam':
@@ -1065,6 +1093,7 @@ document.addEventListener('change', (e) => {
     state.start = e.target.value;
     saveState();
     showToast(`1日目は${fmtDay(state.start)}、受験日は${fmtDay(dayDate(LAST))}です`);
+    if ($('view-settings').classList.contains('active')) return renderSettings();
     return RENDER[currentTab]();
   }
   if (!gateId) return;
@@ -1085,7 +1114,7 @@ $('backup-file').addEventListener('change', async (e) => {
   try {
     importBackup(await f.text());
     showToast('バックアップを読み込みました');
-    renderRecord();
+    renderSettings();
   } catch (err) {
     showToast('読み込めませんでした：' + err.message);
   }
@@ -1137,12 +1166,14 @@ let updateInFlight = false;
 // 新しいバージョンがあれば、そのファイル一式を新しいキャッシュに入れてから画面を更新する。
 // service-worker.js 自体は中身が変わらないリリースもあるので、ブラウザの更新チェックだけに頼らない
 async function checkForUpdate(manual) {
-  if (updateInFlight || !('caches' in window)) return;
+  if (updateInFlight) return;
+  if (!('caches' in window)) { if (manual) reportUpdate('このブラウザでは確認できません', true); return; }
   updateInFlight = true;
+  if (manual && $('update-status')) $('update-status').textContent = '確認しています…';
   try {
     const latest = await fetchLatestVersion();
     if (latest === APP_VERSION) {
-      if (manual) showToast(`最新のバージョン（${APP_VERSION}）です`);
+      reportUpdate(`最新のバージョン（${APP_VERSION}）です`, manual);
       return;
     }
     // 同じバージョンへの自動更新は1回だけ(HTTPキャッシュが古いまま再読込を繰り返さないため)
@@ -1161,13 +1192,13 @@ async function checkForUpdate(manual) {
 
     if (['view-quiz', 'view-set', 'view-exam'].some((v) => $(v).classList.contains('active'))) {
       pendingReload = true;
-      showToast(`新しいバージョン（${latest}）があります。問題を終えたら更新します`);
+      reportUpdate(`新しいバージョン（${latest}）があります。問題を終えたら更新します`, true);
     } else {
-      showToast(`新しいバージョン（${latest}）に更新します`);
+      reportUpdate(`新しいバージョン（${latest}）に更新します`, true);
       setTimeout(() => location.reload(), 900);
     }
   } catch (e) {
-    if (manual) showToast('確認できませんでした。通信状態を確かめてください');
+    reportUpdate('確認できませんでした。通信状態を確かめてください', manual);
   } finally {
     updateInFlight = false;
   }
